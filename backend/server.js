@@ -1,10 +1,22 @@
 require('dotenv').config();
 const http = require('http');
+const url = require('url');
 const { analyzeHybridSentiment } = require('./hybrid-sentiment');
+const database = require('./database');
 
 const PORT = process.env.PORT || 3002;
 
-const server = http.createServer((req, res) => {
+async function initializeServer() {
+    try {
+        await database.init();
+        console.log('Database initialized successfully');
+    } catch (error) {
+        console.error('Failed to initialize database:', error);
+        process.exit(1);
+    }
+}
+
+const server = http.createServer(async (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -15,13 +27,16 @@ const server = http.createServer((req, res) => {
         return;
     }
     
-    if (req.method === 'GET' && req.url === '/') {
+    const parsedUrl = url.parse(req.url, true);
+    const pathname = parsedUrl.pathname;
+    
+    if (req.method === 'GET' && pathname === '/') {
         res.writeHead(200, { 'Content-Type': 'text/plain' });
         res.end('Sentiment Analysis API Server is running!');
         return;
     }
     
-    if (req.method === 'GET' && req.url === '/api/health') {
+    if (req.method === 'GET' && pathname === '/api/health') {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({
             status: 'healthy',
@@ -30,8 +45,49 @@ const server = http.createServer((req, res) => {
         }));
         return;
     }
+
+    if (req.method === 'GET' && pathname === '/api/reviews') {
+        try {
+            const limit = parseInt(parsedUrl.query.limit) || 10;
+            const reviews = await database.getRecentReviews(limit);
+            
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({
+                success: true,
+                data: reviews
+            }));
+        } catch (error) {
+            console.error('Error fetching reviews:', error);
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({
+                error: 'Internal server error',
+                message: 'Failed to fetch reviews'
+            }));
+        }
+        return;
+    }
+
+    if (req.method === 'GET' && pathname === '/api/stats') {
+        try {
+            const stats = await database.getStats();
+            
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({
+                success: true,
+                data: stats
+            }));
+        } catch (error) {
+            console.error('Error fetching stats:', error);
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({
+                error: 'Internal server error',
+                message: 'Failed to fetch statistics'
+            }));
+        }
+        return;
+    }
     
-    if (req.method === 'POST' && req.url === '/api/analyze') {
+    if (req.method === 'POST' && pathname === '/api/analyze') {
         let body = '';
         
         req.on('data', chunk => {
@@ -72,6 +128,20 @@ const server = http.createServer((req, res) => {
 
                 const result = await analyzeHybridSentiment(text);
                 
+                try {
+                    await database.saveReview({
+                        review_text: text,
+                        sentiment: result.sentiment,
+                        confidence: result.confidence,
+                        positive_score: result.details.positiveScore,
+                        negative_score: result.details.negativeScore,
+                        word_count: result.details.wordCount,
+                        explanation: result.explanation
+                    });
+                } catch (dbError) {
+                    console.error('Error saving to database:', dbError);
+                }
+                
                 res.writeHead(200, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({
                     success: true,
@@ -94,8 +164,22 @@ const server = http.createServer((req, res) => {
     res.end('Not Found');
 });
 
-server.listen(PORT, () => {
-    console.log(`Sentiment Analysis Server is running on port ${PORT}`);
+initializeServer().then(() => {
+    server.listen(PORT, () => {
+        console.log(`Sentiment Analysis Server is running on port ${PORT}`);
+    });
+});
+
+process.on('SIGTERM', () => {
+    console.log('SIGTERM received, closing database connection');
+    database.close();
+    process.exit(0);
+});
+
+process.on('SIGINT', () => {
+    console.log('SIGINT received, closing database connection');
+    database.close();
+    process.exit(0);
 });
 
 module.exports = server; 
