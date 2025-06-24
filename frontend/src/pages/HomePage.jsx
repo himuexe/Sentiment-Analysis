@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
+import { API_URL } from '../config';
 
 function HomePage() {
   const [text, setText] = useState('');
@@ -14,7 +15,7 @@ function HomePage() {
       setError(null);
 
       try {
-        const response = await fetch('http://localhost:3002/api/analyze', {
+        const response = await fetch(`${API_URL}/api/analyze`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
