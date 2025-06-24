@@ -2,6 +2,11 @@
 
 > A sophisticated web application that analyzes the emotional tone of movie reviews using advanced rule-based natural language processing, complete with data persistence and real-time analytics.
 
+## 🚀 Live Application
+
+**Frontend**: [https://sentiment-analysis-f4x5.vercel.app/](https://sentiment-analysis-f4x5.vercel.app/)  
+**Backend API**: [https://sentiment-analysis-t7kx.onrender.com/](https://sentiment-analysis-t7kx.onrender.com/)
+
 ---
 
 ## Overview
