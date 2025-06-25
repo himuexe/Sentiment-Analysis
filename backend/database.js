@@ -32,7 +32,13 @@ class Database {
                     negative_score INTEGER NOT NULL,
                     word_count INTEGER NOT NULL,
                     explanation TEXT NOT NULL,
-                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    provider TEXT DEFAULT 'rule-based',
+                    ai_powered BOOLEAN DEFAULT FALSE,
+                    intensity INTEGER DEFAULT 1,
+                    emotions TEXT DEFAULT '[]',
+                    context_understanding TEXT DEFAULT '',
+                    key_phrases TEXT DEFAULT '[]'
                 )
             `;
 
@@ -41,9 +47,28 @@ class Database {
                     reject(err);
                     return;
                 }
-                resolve();
+                this.addNewColumns().then(resolve).catch(reject);
             });
         });
+    }
+
+    async addNewColumns() {
+        const alterStatements = [
+            'ALTER TABLE reviews ADD COLUMN provider TEXT DEFAULT "rule-based"',
+            'ALTER TABLE reviews ADD COLUMN ai_powered BOOLEAN DEFAULT FALSE',
+            'ALTER TABLE reviews ADD COLUMN intensity INTEGER DEFAULT 1',
+            'ALTER TABLE reviews ADD COLUMN emotions TEXT DEFAULT "[]"',
+            'ALTER TABLE reviews ADD COLUMN context_understanding TEXT DEFAULT ""',
+            'ALTER TABLE reviews ADD COLUMN key_phrases TEXT DEFAULT "[]"'
+        ];
+
+        for (const statement of alterStatements) {
+            await new Promise((resolve) => {
+                this.db.run(statement, (err) => {
+                    resolve();
+                });
+            });
+        }
     }
 
     async saveReview(reviewData) {
@@ -55,14 +80,21 @@ class Database {
                 positive_score,
                 negative_score,
                 word_count,
-                explanation
+                explanation,
+                provider = 'rule-based',
+                ai_powered = false,
+                intensity = 1,
+                emotions = [],
+                contextUnderstanding = '',
+                keyPhrases = []
             } = reviewData;
 
             const insertSQL = `
                 INSERT INTO reviews (
                     review_text, sentiment, confidence, 
-                    positive_score, negative_score, word_count, explanation
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    positive_score, negative_score, word_count, explanation,
+                    provider, ai_powered, intensity, emotions, context_understanding, key_phrases
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `;
 
             this.db.run(insertSQL, [
@@ -72,7 +104,13 @@ class Database {
                 positive_score,
                 negative_score,
                 word_count,
-                explanation
+                explanation,
+                provider,
+                ai_powered ? 1 : 0,
+                intensity,
+                JSON.stringify(emotions),
+                contextUnderstanding,
+                JSON.stringify(keyPhrases)
             ], function(err) {
                 if (err) {
                     reject(err);
@@ -88,7 +126,8 @@ class Database {
             const selectSQL = `
                 SELECT id, review_text, sentiment, confidence, 
                        positive_score, negative_score, word_count, 
-                       explanation, created_at
+                       explanation, created_at, provider, ai_powered, 
+                       intensity, emotions, context_understanding, key_phrases
                 FROM reviews 
                 ORDER BY created_at DESC 
                 LIMIT ?
@@ -99,7 +138,15 @@ class Database {
                     reject(err);
                     return;
                 }
-                resolve(rows);
+                
+                const processedRows = rows.map(row => ({
+                    ...row,
+                    ai_powered: Boolean(row.ai_powered),
+                    emotions: row.emotions ? JSON.parse(row.emotions) : [],
+                    key_phrases: row.key_phrases ? JSON.parse(row.key_phrases) : []
+                }));
+                
+                resolve(processedRows);
             });
         });
     }
@@ -109,7 +156,8 @@ class Database {
             const selectSQL = `
                 SELECT id, review_text, sentiment, confidence,
                        positive_score, negative_score, word_count,
-                       explanation, created_at
+                       explanation, created_at, provider, ai_powered,
+                       intensity, emotions, context_understanding, key_phrases
                 FROM reviews 
                 WHERE id = ?
             `;
@@ -119,6 +167,13 @@ class Database {
                     reject(err);
                     return;
                 }
+                
+                if (row) {
+                    row.ai_powered = Boolean(row.ai_powered);
+                    row.emotions = row.emotions ? JSON.parse(row.emotions) : [];
+                    row.key_phrases = row.key_phrases ? JSON.parse(row.key_phrases) : [];
+                }
+                
                 resolve(row);
             });
         });
@@ -132,7 +187,10 @@ class Database {
                     COUNT(CASE WHEN sentiment = 'positive' THEN 1 END) as positive_count,
                     COUNT(CASE WHEN sentiment = 'negative' THEN 1 END) as negative_count,
                     COUNT(CASE WHEN sentiment = 'neutral' THEN 1 END) as neutral_count,
-                    AVG(confidence) as avg_confidence
+                    AVG(confidence) as avg_confidence,
+                    COUNT(CASE WHEN ai_powered = 1 THEN 1 END) as ai_powered_count,
+                    COUNT(CASE WHEN provider = 'gemini' THEN 1 END) as gemini_count,
+                    AVG(intensity) as avg_intensity
                 FROM reviews
             `;
 

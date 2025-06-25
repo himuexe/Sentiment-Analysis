@@ -136,7 +136,13 @@ const server = http.createServer(async (req, res) => {
                         positive_score: result.details.positiveScore,
                         negative_score: result.details.negativeScore,
                         word_count: result.details.wordCount,
-                        explanation: result.explanation
+                        explanation: result.explanation,
+                        provider: result.provider || 'rule-based',
+                        ai_powered: result.aiPowered || false,
+                        intensity: result.intensity || 1,
+                        emotions: result.emotions || [],
+                        contextUnderstanding: result.contextUnderstanding || '',
+                        keyPhrases: result.keyPhrases || []
                     });
                 } catch (dbError) {
                     console.error('Error saving to database:', dbError);
